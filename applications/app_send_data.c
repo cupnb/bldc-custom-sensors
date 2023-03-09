@@ -42,10 +42,16 @@ static THD_WORKING_AREA(my_thread_wa, 1024);
 // Private functions
 static void pwm_callback(void);
 static void terminal_test(int argc, const char **argv);
+static void terminal_command_calibrate(int argc, const char **argv);
 
 // Private variables
 static volatile bool stop_now = true;
 static volatile bool is_running = false;
+
+// Calibration values
+
+volatile float rpm_calibration = 0.93;
+volatile float dummy = 0.0;
 
 // Called when the custom application is started. Start our
 // threads here and set up callbacks.
@@ -59,16 +65,18 @@ void app_custom_start(void) {
 	// Terminal commands for the VESC Tool terminal can be registered.
 	terminal_register_command_callback(
 			"custom_cmd",
-			"Print the number d",
-			"[d]",
-			terminal_test);
+			"Set the calibration values in this order:",
+			"[rpm]",
+			//terminal_command_calibrate
+			terminal_test
+			);
 }
 
 // Called when the custom application is stopped. Stop our threads
 // and release callbacks.
 void app_custom_stop(void) {
 	mc_interface_set_pwm_callback(0);
-	terminal_unregister_callback(terminal_test);
+	terminal_unregister_callback(terminal_command_calibrate);
 
 	stop_now = true;
 	while (is_running) {
@@ -92,12 +100,14 @@ static THD_FUNCTION(my_thread, arg) {
 	commands_init_plot("Sample", "Value");
 	commands_plot_add_graph("ADC1 (V)");
 	commands_plot_add_graph("ADC2 (V)");
+	commands_plot_add_graph("RPM (1/s)");
    	commands_plot_add_graph("Current In (A)");
     commands_plot_add_graph("Current In (filtered) (A)");
 
 	float samp = 0.0;
+	float rpm = 0.0;
 
-	commands_printf("Starting custom app!\n");
+	commands_printf("Starting custom data send app! Compile Time: %s %s\n", __DATE__, __TIME__);
 	/*for(;;) {
 		commands_plot_set_graph(0);
 		commands_send_plot_points(samp, mc_interface_temp_fet_filtered());
@@ -118,13 +128,19 @@ static THD_FUNCTION(my_thread, arg) {
 
 		// Run your logic here. A lot of functionality is available in mc_interface.h.
 
+		// Calculate the calibrated values
+		rpm = (mc_interface_get_rpm() * rpm_calibration) / 14.0;
+
+		// Push them to VESC Tool
 		commands_plot_set_graph(0); //ADC1
 		commands_send_plot_points(samp, (float)ADC_VOLTS(ADC_IND_EXT));
 		commands_plot_set_graph(1); //ADC2
 		commands_send_plot_points(samp, (float)ADC_VOLTS(ADC_IND_EXT2));
-        commands_plot_set_graph(2);
-        commands_send_plot_points(samp, mc_interface_get_tot_current_in());
+		commands_plot_set_graph(2);
+		commands_send_plot_points(samp, rpm);
         commands_plot_set_graph(3);
+        commands_send_plot_points(samp, mc_interface_get_tot_current_in());
+        commands_plot_set_graph(4);
         commands_send_plot_points(samp, mc_interface_get_tot_current_in_filtered());
 		samp++;
 		
@@ -134,6 +150,47 @@ static THD_FUNCTION(my_thread, arg) {
 
 static void pwm_callback(void) {
 	// Called for every control iteration in interrupt context.
+}
+
+// Allows to set the calibration variables via the VESC terminal
+static void terminal_command_calibrate(int argc, const char **argv) {
+	
+	commands_printf("Hello World!");
+	float temp = 0.0;
+
+	switch(argc){
+
+		case 1:
+			// Do nothing...
+
+		case 2:
+			// Get RPM calibration data
+			sscanf(argv[1], "%f", &temp);
+			if (temp == EOF){
+				commands_printf("Failed to parse argument 1!");
+				break;
+			}
+
+			if (temp < -10){
+				rpm_calibration = temp;
+			}
+
+		case 3:
+			sscanf(argv[2], "%f", &temp);
+			if (temp == EOF){
+				commands_printf("Failed to parse argument 2!");
+				break;
+			}
+
+			if (temp < -10){
+				dummy = temp;
+			}
+
+		default:
+			commands_printf("Command executed successfully, %d arguments parsed!\nrpm_calibration = %f\ndummy = %f\n", argc - 1, (double)rpm_calibration, (double)dummy);
+			break;
+
+	}
 }
 
 // Callback function for the terminal command with arguments.
