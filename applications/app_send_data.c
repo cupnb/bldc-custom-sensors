@@ -41,7 +41,6 @@ static THD_WORKING_AREA(my_thread_wa, 1024);
 
 // Private functions
 static void pwm_callback(void);
-static void terminal_test(int argc, const char **argv);
 static void terminal_command_calibrate(int argc, const char **argv);
 
 // Private variables
@@ -64,11 +63,10 @@ void app_custom_start(void) {
 
 	// Terminal commands for the VESC Tool terminal can be registered.
 	terminal_register_command_callback(
-			"custom_cmd",
+			"calibrate",
 			"Set the calibration values in this order:",
 			"[rpm]",
-			//terminal_command_calibrate
-			terminal_test
+			terminal_command_calibrate
 			);
 }
 
@@ -154,57 +152,41 @@ static void pwm_callback(void) {
 
 // Allows to set the calibration variables via the VESC terminal
 static void terminal_command_calibrate(int argc, const char **argv) {
-	
-	commands_printf("Hello World!");
+
 	float temp = 0.0;
+	int d = 0;
 
-	switch(argc){
+	if (argc == 1) {commands_printf("Please provide arguments\n"); return;}
 
-		case 1:
-			// Do nothing...
+	if (argc > 1){
+		// Get RPM calibration data
+		if (sscanf(argv[1], "%f", &temp) == 0){
+			commands_printf("Failed to parse argument 1!\n");
+			return;
+		}
 
-		case 2:
-			// Get RPM calibration data
-			sscanf(argv[1], "%f", &temp);
-			if (temp == EOF){
-				commands_printf("Failed to parse argument 1!");
-				break;
-			}
+		commands_printf("Argument 1 sscanf: %f", (double)temp);
 
-			if (temp < -10){
-				rpm_calibration = temp;
-			}
-
-		case 3:
-			sscanf(argv[2], "%f", &temp);
-			if (temp == EOF){
-				commands_printf("Failed to parse argument 2!");
-				break;
-			}
-
-			if (temp < -10){
-				dummy = temp;
-			}
-
-		default:
-			commands_printf("Command executed successfully, %d arguments parsed!\nrpm_calibration = %f\ndummy = %f\n", argc - 1, (double)rpm_calibration, (double)dummy);
-			break;
-
+		if (temp > -10){
+			rpm_calibration = temp;
+		}
 	}
-}
 
-// Callback function for the terminal command with arguments.
-static void terminal_test(int argc, const char **argv) {
-	if (argc == 2) {
-		int d = -1;
-		sscanf(argv[1], "%d", &d);
+	if (argc > 2){
+		// Template for any other arguments in the future
+		if ((d = sscanf(argv[2], "%f", &temp)) == 0){
+				commands_printf("Failed to parse argument 2!\n");
+				return;
+		}
 
-		commands_printf("You have entered %d", d);
+		commands_printf("Argument 2 sscanf: %f", (double)temp);
+			
 
-		// For example, read the ADC inputs on the COMM header.
-		commands_printf("ADC1: %.2f V ADC2: %.2f V",
-				(double)ADC_VOLTS(ADC_IND_EXT), (double)ADC_VOLTS(ADC_IND_EXT2));
-	} else {
-		commands_printf("This command requires one argument.\n");
+		if (temp > -10){
+			dummy = temp;
+		}
 	}
+
+	commands_printf("Command executed successfully, %d arguments parsed!\n\nrpm_calibration = %f\ndummy = %f\n", argc - 1, (double)rpm_calibration, (double)dummy);
+	
 }
